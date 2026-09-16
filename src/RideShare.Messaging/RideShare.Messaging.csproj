@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared event contracts + Kafka plumbing.
+    In the Java version each service kept its own copy of RideRequestedEvent / RideMatchedEvent
+    (and the copies had drifted: field order differed). One shared library removes that drift.
+  -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Aspire.Confluent.Kafka" Version="$(AspireVersion)" />
+  </ItemGroup>
+
+</Project>
