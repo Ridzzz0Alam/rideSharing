@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\RideShare.ServiceDefaults\RideShare.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\RideShare.Messaging\RideShare.Messaging.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RideShare.Tests" />
+  </ItemGroup>
+
+</Project>
