@@ -1,0 +1,116 @@
+# Full stack without Aspire:  docker compose up --build
+# Frontend: http://localhost:3000   Gateway: http://localhost:8080   Kafka UI: http://localhost:8090
+name: rideshare
+
+x-dotnet-env: &dotnet-env
+  ASPNETCORE_ENVIRONMENT: Production
+  ConnectionStrings__kafka: kafka:9092
+
+services:
+  # ── Infrastructure ─────────────────────────────────────────────
+  redis:
+    image: redis:8-alpine
+    container_name: redis-geo
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ridedb
+    ports: ["5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ridedb"]
+      interval: 5s
+      retries: 10
+
+  # KRaft mode — Zookeeper is no longer required.
+  kafka:
+    image: apache/kafka:4.0.0
+    ports: ["29092:29092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 > /dev/null 2>&1"]
+      interval: 10s
+      retries: 12
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports: ["8090:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka: { condition: service_healthy }
+
+  # ── .NET services ──────────────────────────────────────────────
+  location-service:
+    build: { context: ., args: { PROJECT: RideShare.LocationService } }
+    ports: ["8082:8080"]
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__redis: redis:6379
+    depends_on:
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+
+  ride-service:
+    build: { context: ., args: { PROJECT: RideShare.RideService } }
+    ports: ["8083:8080"]
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__ridedb: Host=postgres;Port=5432;Database=ridedb;Username=postgres;Password=postgres
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+
+  matching-service:
+    build: { context: ., args: { PROJECT: RideShare.MatchingService } }
+    ports: ["8084:8080"]
+    environment:
+      <<: *dotnet-env
+      services__location-service__http__0: http://location-service:8080
+    depends_on:
+      kafka: { condition: service_healthy }
+      location-service: { condition: service_started }
+
+  gateway:
+    build: { context: ., args: { PROJECT: RideShare.Gateway } }
+    ports: ["8080:8080"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      services__location-service__http__0: http://location-service:8080
+      services__ride-service__http__0: http://ride-service:8080
+      Cors__AllowedOrigins__0: http://localhost:3000
+    depends_on: [location-service, ride-service]
+
+  # ── Frontend ───────────────────────────────────────────────────
+  web:
+    build: { context: ./frontend }
+    ports: ["3000:3000"]
+    environment:
+      # Must be reachable from the *browser*, not from inside the container.
+      GATEWAY_URL: http://localhost:8080
+    depends_on: [gateway]
+
+volumes:
+  postgres-data:
