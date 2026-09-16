@@ -1,0 +1,79 @@
+# End-to-end flow from the original README, sent through the gateway.
+# Works with the VS Code REST Client extension, Rider and Visual Studio.
+
+@gateway = http://localhost:8080
+
+### 1. Add driver locations
+POST {{gateway}}/api/v1/locations/drivers/update
+Content-Type: application/json
+
+{ "driverId": "driver:1", "latitude": 12.9716, "longitude": 77.5946 }
+
+###
+POST {{gateway}}/api/v1/locations/drivers/update
+Content-Type: application/json
+
+{ "driverId": "driver:2", "latitude": 12.9800, "longitude": 77.5800 }
+
+###
+POST {{gateway}}/api/v1/locations/drivers/update
+Content-Type: application/json
+
+{ "driverId": "driver:3", "latitude": 12.9600, "longitude": 77.6100 }
+
+### Nearby drivers
+GET {{gateway}}/api/v1/locations/drivers/nearby?latitude=12.9716&longitude=77.5946&radius=5
+
+### All drivers (with busy flag)
+GET {{gateway}}/api/v1/locations/drivers/
+
+### Fare estimate (new)
+POST {{gateway}}/api/v1/rides/estimate
+Content-Type: application/json
+
+{ "pickupLatitude": 12.9716, "pickupLongitude": 77.5946, "dropLatitude": 12.9352, "dropLongitude": 77.6245 }
+
+### 2. Request a ride
+# @name requestRide
+POST {{gateway}}/api/v1/rides/request
+Content-Type: application/json
+
+{
+  "riderId": "rider:1",
+  "pickupLatitude": 12.9716,
+  "pickupLongitude": 77.5946,
+  "pickupAddress": "MG Road, Bangalore",
+  "dropLatitude": 12.9352,
+  "dropLongitude": 77.6245,
+  "dropAddress": "Koramangala, Bangalore"
+}
+
+### 3. Check ride status (expect driverId + status ACCEPTED after a moment)
+GET {{gateway}}/api/v1/rides/{{requestRide.response.body.id}}
+
+### Driver is arriving (new)
+PUT {{gateway}}/api/v1/rides/{{requestRide.response.body.id}}/arriving
+
+### 4. Start the ride
+PUT {{gateway}}/api/v1/rides/{{requestRide.response.body.id}}/start
+
+### 5. Complete the ride
+PUT {{gateway}}/api/v1/rides/{{requestRide.response.body.id}}/complete
+
+### Cancel (only valid before completion)
+PUT {{gateway}}/api/v1/rides/{{requestRide.response.body.id}}/cancel?reason=Changed%20plans
+
+### 6. Rider history
+GET {{gateway}}/api/v1/rides/rider/rider:1
+
+### Driver history (new)
+GET {{gateway}}/api/v1/rides/driver/driver:1
+
+### Validation error example → 400 problem details
+POST {{gateway}}/api/v1/rides/request
+Content-Type: application/json
+
+{ "riderId": "", "pickupLatitude": 123 }
+
+### Driver goes offline
+DELETE {{gateway}}/api/v1/locations/drivers/driver:3
