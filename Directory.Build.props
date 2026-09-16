@@ -1,0 +1,19 @@
+<Project>
+  <!-- Shared settings for every project in the solution. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Package versions live here so upgrades are a one-line change. -->
+  <PropertyGroup>
+    <AspireVersion>13.5.3</AspireVersion>
+    <ServiceDiscoveryVersion>10.6.0</ServiceDiscoveryVersion>
+    <OpenTelemetryVersion>1.15.3</OpenTelemetryVersion>
+    <OpenTelemetryInstrumentationVersion>1.15.0</OpenTelemetryInstrumentationVersion>
+    <AspNetCoreVersion>10.0.0</AspNetCoreVersion>
+  </PropertyGroup>
+</Project>

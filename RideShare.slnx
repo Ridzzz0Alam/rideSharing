@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RideShare.AppHost/RideShare.AppHost.csproj" />
+    <Project Path="src/RideShare.ServiceDefaults/RideShare.ServiceDefaults.csproj" />
+    <Project Path="src/RideShare.Messaging/RideShare.Messaging.csproj" />
+    <Project Path="src/RideShare.LocationService/RideShare.LocationService.csproj" />
+    <Project Path="src/RideShare.RideService/RideShare.RideService.csproj" />
+    <Project Path="src/RideShare.MatchingService/RideShare.MatchingService.csproj" />
+    <Project Path="src/RideShare.Gateway/RideShare.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RideShare.Tests/RideShare.Tests.csproj" />
+  </Folder>
+</Solution>
