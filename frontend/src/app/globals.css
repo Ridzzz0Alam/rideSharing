@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* ── Design tokens ─────────────────────────────────────────────── */
+:root {
+  --asphalt: #1c2230;
+  --asphalt-soft: #2b3344;
+  --kerb: #eef0f3;
+  --paper: #ffffff;
+  --line: #d9dde4;
+  --muted: #5d6576;
+  --route: #2f5bea;
+  --route-ink: #1f44c4;
+  --pickup: #12976b;
+  --drop: #c23b6e;
+  --signal: #e0a100;
+}
+
+@theme inline {
+  --color-asphalt: var(--asphalt);
+  --color-asphalt-soft: var(--asphalt-soft);
+  --color-kerb: var(--kerb);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-route: var(--route);
+  --color-route-ink: var(--route-ink);
+  --color-pickup: var(--pickup);
+  --color-drop: var(--drop);
+  --color-signal: var(--signal);
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--kerb);
+  color: var(--asphalt);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 2px;
+}
+
+/* ── Status line: the one piece of ambient motion ─────────────── */
+@keyframes stop-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+
+.stop-current {
+  animation: stop-pulse 1.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stop-current { animation: none; }
+}
+
+/* ── Map markers (Leaflet divIcons) ───────────────────────────── */
+.pin {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 3px solid var(--paper);
+  box-shadow: 0 2px 6px rgb(28 34 48 / 0.35);
+}
+.pin span {
+  transform: rotate(45deg);
+  color: var(--paper);
+  font: 700 12px/1 var(--font-sans);
+}
+.pin-pickup { background: var(--pickup); }
+.pin-drop { background: var(--drop); }
+
+.car {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--paper);
+  border: 2px solid var(--asphalt);
+  color: var(--asphalt);
+  font: 700 10px/1 var(--font-sans);
+  box-shadow: 0 1px 4px rgb(28 34 48 / 0.3);
+}
+.car-busy { background: var(--asphalt); color: var(--paper); }
+.car-mine { background: var(--route); border-color: var(--paper); color: var(--paper); width: 32px; height: 32px; }
+
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: #dfe3e8;
+}
