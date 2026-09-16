@@ -1,0 +1,22 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.5.3">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>744b7447-44ec-46dc-a23d-bfcec4f4c075</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Redis" Version="$(AspireVersion)" />
+    <PackageReference Include="Aspire.Hosting.Kafka" Version="$(AspireVersion)" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="$(AspireVersion)" />
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="$(AspireVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RideShare.LocationService\RideShare.LocationService.csproj" />
+    <ProjectReference Include="..\RideShare.RideService\RideShare.RideService.csproj" />
+    <ProjectReference Include="..\RideShare.MatchingService\RideShare.MatchingService.csproj" />
+    <ProjectReference Include="..\RideShare.Gateway\RideShare.Gateway.csproj" />
+  </ItemGroup>
+
+</Project>
