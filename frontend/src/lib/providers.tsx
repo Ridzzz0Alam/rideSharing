@@ -80,6 +80,10 @@ function RideHubProvider({ gatewayUrl, children }: { gatewayUrl: string; childre
       .build();
     connectionRef.current = connection;
 
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let starting: Promise<void> = Promise.resolve();
+
     const resubscribeAll = () => {
       for (const key of subscriptions.current.keys()) invoke(key, "Subscribe");
     };
@@ -89,19 +93,23 @@ function RideHubProvider({ gatewayUrl, children }: { gatewayUrl: string; childre
       void queryClient.invalidateQueries({ queryKey: ["rides"] });
       void queryClient.invalidateQueries({ queryKey: queryKeys.drivers });
     });
-    connection.onreconnecting(() => setState("reconnecting"));
+    // Ignore events from a torn-down connection so they can't clobber its replacement's state.
+    connection.onreconnecting(() => {
+      if (!cancelled) setState("reconnecting");
+    });
     connection.onreconnected(() => {
+      if (cancelled) return;
       setState("live");
       resubscribeAll(); // groups are per-connection and lost on reconnect
     });
-    connection.onclose(() => setState("offline"));
-
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    connection.onclose(() => {
+      if (!cancelled) setState("offline");
+    });
 
     const start = async () => {
       try {
-        await connection.start();
+        starting = connection.start();
+        await starting;
         if (cancelled) return;
         setState("live");
         resubscribeAll();
@@ -117,7 +125,9 @@ function RideHubProvider({ gatewayUrl, children }: { gatewayUrl: string; childre
       cancelled = true;
       clearTimeout(retryTimer);
       connectionRef.current = null;
-      void connection.stop();
+      // Stopping mid-negotiation makes SignalR log "The connection was stopped during negotiation"
+      // (React Strict Mode unmounts every effect once in development), so let start() settle first.
+      void starting.catch(() => {}).then(() => connection.stop());
     };
   }, [gatewayUrl, invoke, queryClient]);
 
