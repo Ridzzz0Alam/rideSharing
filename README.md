@@ -36,20 +36,40 @@ with `CANCELLED` reachable from any non-terminal state.
 
 ## Tech stack
 
-Versions were checked against Context7 and NuGet/npm in September 2026.
+### Backend
 
-| Concern | Java version | This version |
-|---|---|---|
-| Runtime | Java / Spring Boot | .NET 10 (LTS), C# latest, ASP.NET Core Minimal APIs |
-| Orchestration | docker-compose | Aspire 13.5 (`Aspire.AppHost.Sdk`), dashboard with logs/traces/metrics |
-| Geo store | Spring Data Redis | StackExchange.Redis via `Aspire.StackExchange.Redis` (`GEOADD`, `GEOSEARCH`) |
-| Messaging | Spring Kafka + Zookeeper | Confluent.Kafka via `Aspire.Confluent.Kafka`, Kafka in KRaft mode (no Zookeeper) |
-| Database | JPA/Hibernate + MySQL | EF Core 10 + PostgreSQL via `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL` |
-| Service-to-service HTTP | OpenFeign | Typed `HttpClient` + service discovery + standard resilience handler |
-| Validation / errors | Bean Validation + `@RestControllerAdvice` | .NET 10 built-in `AddValidation()` + RFC 9457 ProblemDetails |
-| Observability | Actuator | OpenTelemetry + `/health`, `/alive` |
-| API docs | — | `Microsoft.AspNetCore.OpenApi` at `/openapi/v1.json` |
-| Frontend | — | Next.js 16.3, React 19.2, Tailwind 4, TanStack Query 5, SignalR 10, Leaflet |
+| Area | Technology |
+|---|---|
+| Language and runtime | C# (latest), .NET 10, ASP.NET Core Minimal APIs |
+| API gateway | YARP 2.3 reverse proxy with service discovery, CORS and rate limiting |
+| Real-time updates | ASP.NET Core SignalR (`/hubs/rides`) |
+| Database | PostgreSQL 17 with Entity Framework Core 10 (Npgsql provider) |
+| Driver locations | Redis 8 GEO commands via StackExchange.Redis |
+| Messaging | Apache Kafka 4.0 (KRaft mode) via Confluent.Kafka |
+| Resilience | `Microsoft.Extensions.Http.Resilience`, `Microsoft.Extensions.ServiceDiscovery` |
+| Validation and errors | .NET 10 `AddValidation()`, RFC 9457 ProblemDetails |
+| Observability | OpenTelemetry (traces, metrics, logs, OTLP exporter), `/health` and `/alive` endpoints |
+| API docs | `Microsoft.AspNetCore.OpenApi` at `/openapi/v1.json` |
+| Orchestration | Aspire 13.5 AppHost (Redis Insight, Kafka UI, pgAdmin) |
+| Tests | xUnit 2.9 |
+
+### Frontend
+
+| Area | Technology |
+|---|---|
+| Framework | Next.js 16.3 (App Router), React 19.2, TypeScript 5.9 |
+| Styling | Tailwind CSS 4.3 |
+| Data fetching | TanStack Query 5 |
+| Real-time updates | `@microsoft/signalr` 10, plus `BroadcastChannel` to keep open tabs in sync |
+| Maps | Leaflet 1.9 with React Leaflet 5, CARTO basemap tiles |
+| Linting | ESLint 9 (`eslint-config-next`) |
+
+### Infrastructure
+
+| Area | Technology |
+|---|---|
+| Containers | Docker, Docker Compose |
+| Images | `mcr.microsoft.com/dotnet/sdk:10.0` and `aspnet:10.0`, `node:22-alpine`, `redis:8-alpine`, `postgres:17-alpine`, `apache/kafka:4.0.0`, `provectuslabs/kafka-ui` |
 
 ### Why PostgreSQL instead of MySQL
 
@@ -62,47 +82,52 @@ back once a provider is available:
 3. `AppHost.cs`: `AddPostgres(...)` → `AddMySql(...)`.
 4. `RideDbContext`: the `uint Version` row version maps to PostgreSQL `xmin`; replace it with a regular concurrency token.
 
-## Running
+## Run locally
 
-### Option A: Aspire (recommended for development)
+### With Docker Compose (simplest)
 
-Prerequisites: .NET 10 SDK, Node.js 22+, Docker (or Podman), and optionally the Aspire CLI
-(`dotnet tool install -g aspire.cli`, or see aspire.dev).
+You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/) running.
+
+```bash
+git clone https://github.com/Ridzzz0Alam/rideSharing.git
+cd rideSharing
+docker compose up --build -d
+```
+
+The first build takes a few minutes. Then open:
+
+| What | URL |
+|---|---|
+| App | http://localhost:3000 |
+| API gateway | http://localhost:8080 |
+| Kafka UI | http://localhost:8090 |
+
+To stop everything, run `docker compose down`. Add `-v` to also delete the database.
+
+### With Aspire (for development)
+
+This option needs the .NET 10 SDK, Node.js 22+ and Docker. It runs the services from source
+and opens the Aspire dashboard, with logs, traces, Redis Insight, Kafka UI and pgAdmin.
 
 ```bash
 cd frontend && npm install && cd ..
-aspire run            # or: dotnet run --project src/RideShare.AppHost
+dotnet run --project src/RideShare.AppHost
 ```
 
-The Aspire dashboard opens automatically. From it you can open the frontend (`web`),
-Kafka UI, RedisInsight and pgAdmin. Service ports match the Java version (8082/8083/8084),
-and the gateway is on 8080.
-
-### Option B: Docker Compose (no .NET SDK needed)
-
-```bash
-docker compose up --build
-```
-
-Frontend http://localhost:3000, gateway http://localhost:8080, Kafka UI http://localhost:8090.
-
-### Option C: run things individually
-
-Start Redis, Kafka and PostgreSQL yourself (for example the infrastructure part of
-`docker-compose.yml`), then `dotnet run` each project under `src/`. `appsettings.json`
-in each service points at `localhost` defaults. For Kafka from compose use
-`ConnectionStrings__kafka=localhost:29092`.
+On Windows with Smart App Control or a similar application control policy turned on, the
+locally built AppHost executable may be blocked. If it is, use Docker Compose instead.
 
 ## Trying it
 
 In the UI:
 
 1. **Fleet** → *Add a driver* a few times (up to 10). Each one appears at a random spot within 2.5 km of the sample pickup.
-2. **Ride** → *Use the sample Bangalore trip* → *Request ride*. Within a second or two the
-   status line moves to *Driver assigned*.
-3. **Drive** → driver id `driver:1` → *Go online*. The car drives itself to the pickup;
-   press *Start trip*, watch it drive to the drop-off, then *Complete trip*.
-   The Ride screen follows along live, and the driver is freed on the Fleet screen.
+2. **Ride** → *Use the sample Bangalore trip* → *Request ride*. Within a second or two a
+   driver is assigned and highlighted on the map.
+3. The car drives to the pickup and you are asked whether to start the ride. Answer *Yes*,
+   and the car drives to the drop-off, where you confirm that the ride is complete.
+4. Optional: open **Drive** in a second window, enter the assigned driver's id and press
+   *Go online*. That window then drives the car, and both screens stay in sync.
 
 With HTTP requests: `http/rideshare.http` reproduces every step of the original README
 through the gateway (VS Code REST Client, Rider or Visual Studio).
