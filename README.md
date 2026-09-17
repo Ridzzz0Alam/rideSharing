@@ -97,7 +97,7 @@ in each service points at `localhost` defaults. For Kafka from compose use
 
 In the UI:
 
-1. **Fleet** → *Add the 3 sample drivers* (the same drivers as the original README).
+1. **Fleet** → *Add a driver* a few times (up to 10). Each one appears at a random spot within 2.5 km of the sample pickup.
 2. **Ride** → *Use the sample Bangalore trip* → *Request ride*. Within a second or two the
    status line moves to *Driver assigned*.
 3. **Drive** → driver id `driver:1` → *Go online*. The car drives itself to the pickup;

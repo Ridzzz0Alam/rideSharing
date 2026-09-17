@@ -58,8 +58,14 @@ body {
   animation: stop-pulse 1.6s ease-out infinite;
 }
 
+@keyframes car-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--route) 60%, transparent), 0 1px 4px rgb(28 34 48 / 0.3); }
+  100% { box-shadow: 0 0 0 16px transparent, 0 1px 4px rgb(28 34 48 / 0.3); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .stop-current { animation: none; }
+  .stop-current,
+  .car-assigned { animation: none; }
 }
 
 /* ── Map markers (Leaflet divIcons) ───────────────────────────── */
@@ -95,6 +101,14 @@ body {
 }
 .car-busy { background: var(--asphalt); color: var(--paper); }
 .car-mine { background: var(--route); border-color: var(--paper); color: var(--paper); width: 32px; height: 32px; }
+.car-assigned {
+  background: var(--route);
+  border-color: var(--paper);
+  color: var(--paper);
+  width: 34px;
+  height: 34px;
+  animation: car-pulse 1.6s ease-out infinite;
+}
 
 .leaflet-container {
   font-family: var(--font-sans);

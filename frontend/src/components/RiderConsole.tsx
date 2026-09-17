@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RideMap, type MapCar } from "@/components/map/RideMap";
 import { MapLayout } from "@/components/Nav";
 import { Button, cx, Field, LiveBadge, Notice, Panel, SectionTitle, StatusLine, StatusPill } from "@/components/ui";
@@ -9,6 +9,7 @@ import { queryKeys } from "@/lib/api";
 import { distanceKm, formatCoords, formatDateTime, formatFare, formatKm, SAMPLE, shortId } from "@/lib/format";
 import { useApi, useLiveState, useLiveSubscription, useStoredValue } from "@/lib/providers";
 import { isTerminal, type DriverSnapshot, type LatLng, type Ride } from "@/lib/types";
+import { usePublishRide, useTripPlayback, type Stop as TripStop } from "@/lib/tripPlayback";
 
 interface Stop {
   position: LatLng;
@@ -88,12 +89,10 @@ export function RiderConsole() {
     },
   });
 
+  const publishRide = usePublishRide();
   const cancelRide = useMutation({
     mutationFn: (rideId: string) => api.cancelRide(rideId, "Cancelled by rider"),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(queryKeys.ride(updated.id), updated);
-      void queryClient.invalidateQueries({ queryKey: ["rides"] });
-    },
+    onSuccess: publishRide,
   });
 
   const nearbyCount = useMemo(() => {
@@ -103,14 +102,34 @@ export function RiderConsole() {
 
   const activeRide = currentRideId ? ride.data : undefined;
 
+  // ── Trip playback: the matched car drives to A, the rider starts the trip, it drives to B, the rider confirms ──
+  const reportedDriver = drivers.data?.find((d) => d.driverId === activeRide?.driverId);
+  const trip = useTripPlayback({
+    role: "rider",
+    driverId: activeRide?.driverId ?? null,
+    ride: activeRide,
+    basePosition: reportedDriver ? { lat: reportedDriver.latitude, lng: reportedDriver.longitude } : undefined,
+  });
+  const assignedDriver =
+    reportedDriver && trip.position
+      ? { ...reportedDriver, latitude: trip.position.lat, longitude: trip.position.lng }
+      : reportedDriver;
+  // "rideId:stop" of a prompt the rider answered "No" to; the panel button reopens it.
+  const [promptDismissedFor, setPromptDismissedFor] = useState<string | null>(null);
+  const promptKey = activeRide && trip.waitingAt ? `${activeRide.id}:${trip.waitingAt}` : null;
+  const promptOpen = promptKey !== null && promptDismissedFor !== promptKey;
+
   // ── Map ──
   const shownPickup = activeRide ? { lat: activeRide.pickupLatitude, lng: activeRide.pickupLongitude } : pickup?.position;
   const shownDrop = activeRide ? { lat: activeRide.dropLatitude, lng: activeRide.dropLongitude } : drop?.position;
-  const cars: MapCar[] = (drivers.data ?? []).map((d) => ({
-    driverId: d.driverId,
-    position: { lat: d.latitude, lng: d.longitude },
-    variant: activeRide?.driverId === d.driverId ? "mine" : d.busy ? "busy" : "idle",
-  }));
+  const cars: MapCar[] = (drivers.data ?? []).map((d) => {
+    const mine = activeRide?.driverId === d.driverId;
+    return {
+      driverId: d.driverId,
+      position: mine && trip.position ? trip.position : { lat: d.latitude, lng: d.longitude },
+      variant: mine ? (activeRide && !isTerminal(activeRide.status) ? "assigned" : "mine") : d.busy ? "busy" : "idle",
+    };
+  });
   const focus = [shownPickup, shownDrop].filter((p): p is LatLng => Boolean(p));
 
   const placeStop = (position: LatLng) => {
@@ -148,12 +167,27 @@ export function RiderConsole() {
     <Panel title="Your ride" aside={<LiveBadge />}>
       <ActiveRide
         ride={activeRide}
-        driver={drivers.data?.find((d) => d.driverId === activeRide.driverId)}
+        driver={assignedDriver}
+        waitingAt={trip.waitingAt}
+        followingDriverScreen={trip.driverScreenOpen}
+        onReopenPrompt={() => setPromptDismissedFor(null)}
         onCancel={() => cancelRide.mutate(activeRide.id)}
         cancelling={cancelRide.isPending}
         onDone={backToBooking}
       />
+      {trip.error && <Notice>{trip.error}</Notice>}
       {cancelRide.error && <Notice>{cancelRide.error.message}</Notice>}
+      {trip.waitingAt && (
+        <ArrivalDialog
+          ride={activeRide}
+          stop={trip.waitingAt}
+          open={promptOpen}
+          busy={trip.confirming}
+          error={trip.confirmError?.message}
+          onYes={trip.confirm}
+          onNo={() => setPromptDismissedFor(promptKey)}
+        />
+      )}
     </Panel>
   ) : (
     <Panel title="Where to?" aside={<LiveBadge />}>
@@ -302,12 +336,18 @@ function StopInput({
 function ActiveRide({
   ride,
   driver,
+  waitingAt,
+  followingDriverScreen,
+  onReopenPrompt,
   onCancel,
   cancelling,
   onDone,
 }: {
   ride: Ride;
   driver?: DriverSnapshot;
+  waitingAt: TripStop | null;
+  followingDriverScreen: boolean;
+  onReopenPrompt: () => void;
   onCancel: () => void;
   cancelling: boolean;
   onDone: () => void;
@@ -358,6 +398,12 @@ function ActiveRide({
 
       <p className="text-xs text-muted">Ride {shortId(ride.id)}, requested {formatDateTime(ride.createdAt)}</p>
 
+      {waitingAt && (
+        <Button className="w-full" onClick={onReopenPrompt}>
+          {waitingAt === "pickup" ? "Start ride" : "Complete ride"}
+        </Button>
+      )}
+
       {terminal ? (
         <Button className="w-full" onClick={onDone}>
           Book another ride
@@ -374,10 +420,91 @@ function ActiveRide({
       )}
       {!terminal && (
         <p className="text-xs text-muted">
-          Start and complete the trip from the Drive screen as {ride.driverId ?? "the assigned driver"}.
+          {waitingAt === "pickup"
+            ? "Your driver is waiting at the pickup. Start the ride when you're in the car."
+            : waitingAt === "drop"
+              ? "Your driver is at the drop-off. Confirm to finish the trip."
+              : ride.status === "RIDE_STARTED"
+                ? "On the way to the drop-off."
+                : "Your driver is heading to the pickup."}
+          {followingDriverScreen && ` Following ${ride.driverId}'s Drive screen.`}
         </p>
       )}
     </>
+  );
+}
+
+const PROMPT_COPY: Record<TripStop, { title: string; question: (ride: Ride) => string; yes: string }> = {
+  pickup: {
+    title: "Your driver has arrived",
+    question: (ride) => `${ride.driverId} is waiting at ${ride.pickupAddress}. Start the ride now?`,
+    yes: "Yes, start ride",
+  },
+  drop: {
+    title: "You've arrived",
+    question: (ride) => `${ride.driverId} has reached ${ride.dropAddress}. Is the ride complete?`,
+    yes: "Yes, complete",
+  },
+};
+
+function ArrivalDialog({
+  ride,
+  stop,
+  open,
+  busy,
+  error,
+  onYes,
+  onNo,
+}: {
+  ride: Ride;
+  stop: TripStop;
+  open: boolean;
+  busy: boolean;
+  error?: string;
+  onYes: () => void;
+  onNo: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby="arrival-title"
+      onCancel={(e) => {
+        e.preventDefault();
+        onNo();
+      }}
+      className="m-auto w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-paper p-6 text-asphalt shadow-[0_8px_30px_rgb(28_34_48/0.3)] backdrop:bg-asphalt/50"
+    >
+      <h2 id="arrival-title" className="text-xl font-bold tracking-tight">
+        {PROMPT_COPY[stop].title}
+      </h2>
+      <p className="mt-2 text-muted">{PROMPT_COPY[stop].question(ride)}</p>
+      <div className="mt-4 flex items-end justify-between rounded-xl bg-kerb px-4 py-3">
+        <p className="text-sm text-muted">Fare</p>
+        <p className="text-2xl font-bold tracking-tight">{formatFare(ride.estimatedFare)}</p>
+      </div>
+      {error && (
+        <div className="mt-4">
+          <Notice>{error}</Notice>
+        </div>
+      )}
+      <div className="mt-5 grid grid-cols-2 gap-2">
+        <Button variant="secondary" disabled={busy} onClick={onNo}>
+          No, not yet
+        </Button>
+        <Button busy={busy} onClick={onYes}>
+          {PROMPT_COPY[stop].yes}
+        </Button>
+      </div>
+    </dialog>
   );
 }
 

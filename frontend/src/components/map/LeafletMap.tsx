@@ -30,7 +30,7 @@ function carIcon(car: MapCar) {
   const cacheKey = `${car.variant}|${car.driverId}`;
   const cached = iconCache.get(cacheKey);
   if (cached) return cached;
-  const size = car.variant === "mine" ? 32 : 26;
+  const size = car.variant === "assigned" ? 34 : car.variant === "mine" ? 32 : 26;
   const label = escapeHtml(car.driverId.split(":").pop()?.slice(0, 3) ?? "");
   const icon = L.divIcon({
     className: "",
@@ -121,12 +121,12 @@ export default function LeafletMap({ center, pickup, drop, cars = [], focus = []
           key={car.driverId}
           position={toTuple(car.position)}
           icon={carIcon(car)}
-          zIndexOffset={car.variant === "mine" ? 1000 : 0}
+          zIndexOffset={car.variant === "mine" || car.variant === "assigned" ? 1000 : 0}
           keyboard={false}
         >
           <Tooltip direction="top" offset={[0, -12]}>
             {car.driverId}
-            {car.variant === "busy" ? " (on a trip)" : ""}
+            {car.variant === "busy" ? " (on a trip)" : car.variant === "assigned" ? " (your driver)" : ""}
           </Tooltip>
         </Marker>
       ))}

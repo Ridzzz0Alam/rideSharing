@@ -3,7 +3,8 @@ import type { LatLng } from "@/lib/types";
 export interface MapCar {
   driverId: string;
   position: LatLng;
-  variant: "idle" | "busy" | "mine";
+  /** "assigned" is the rider's matched driver, highlighted on the Ride screen. */
+  variant: "idle" | "busy" | "mine" | "assigned";
 }
 
 export interface RideMapProps {

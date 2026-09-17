@@ -7,14 +7,15 @@ ARG PROJECT
 WORKDIR /src
 COPY global.json Directory.Build.props ./
 COPY src/ src/
-RUN dotnet publish "src/${PROJECT}/${PROJECT}.csproj" -c Release -o /app /p:UseAppHost=false
+RUN dotnet publish "src/${PROJECT}/${PROJECT}.csproj" -c Release -o /app \
+    && mv "/app/${PROJECT}" /app/service
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
-ARG PROJECT
-ENV APP_DLL=${PROJECT}.dll \
-    ASPNETCORE_HTTP_PORTS=8080
+ENV ASPNETCORE_HTTP_PORTS=8080
 WORKDIR /app
 COPY --from=build /app .
 EXPOSE 8080
 USER $APP_UID
-ENTRYPOINT ["sh", "-c", "exec dotnet \"$APP_DLL\""]
+# Exec form, no shell: dash drops env vars with '-' in the name,
+# which would lose service discovery keys like services__ride-service__http__0.
+ENTRYPOINT ["/app/service"]

@@ -6,12 +6,12 @@ import { RideMap, type MapCar } from "@/components/map/RideMap";
 import { MapLayout } from "@/components/Nav";
 import { Button, cx, Field, LiveBadge, Notice, Panel, SectionTitle, StatusPill } from "@/components/ui";
 import { queryKeys } from "@/lib/api";
-import { distanceKm, formatCoords, formatDateTime, formatFare, formatKm, SAMPLE, stepTowards } from "@/lib/format";
+import { distanceKm, formatCoords, formatDateTime, formatFare, formatKm, SAMPLE } from "@/lib/format";
 import { useApi, useLiveState, useLiveSubscription, useStoredValue } from "@/lib/providers";
-import { isTerminal, type LatLng, type Ride } from "@/lib/types";
+import { usePublishRide, useTripPlayback } from "@/lib/tripPlayback";
+import { isTerminal, type LatLng } from "@/lib/types";
 
 const PING_INTERVAL_MS = 3_000; // same cadence as the original "driver phone" comment
-const DRIVE_STEP_KM = 0.12; // demo speed: fast enough to watch a trip finish
 
 export function DriverConsole() {
   const api = useApi();
@@ -19,7 +19,9 @@ export function DriverConsole() {
   const live = useLiveState() === "live";
 
   const [driverId, setDriverId] = useStoredValue("rideshare.driverId", "driver:1");
-  const [position, setPosition] = useState<LatLng>(SAMPLE.drivers[0].position);
+  // Null until the driver picks a spot or starts moving: until then the car stays where the
+  // location service last saw it, so opening this screen never teleports a car mid-trip.
+  const [chosenPosition, setPosition] = useState<LatLng | null>(null);
   const [online, setOnline] = useState(false);
   const [autoDrive, setAutoDrive] = useState(true);
   const [pingError, setPingError] = useState<string | null>(null);
@@ -40,36 +42,26 @@ export function DriverConsole() {
   const completed = rides.data?.filter((ride) => ride.status === "COMPLETED") ?? [];
   const earnings = completed.reduce((sum, ride) => sum + (ride.actualFare ?? 0), 0);
 
-  // The ping loop reads the latest values through refs so the interval is not recreated every tick.
+  const reported = drivers.data?.find((d) => d.driverId === driverId);
+  const position: LatLng =
+    chosenPosition ?? (reported ? { lat: reported.latitude, lng: reported.longitude } : SAMPLE.drivers[0].position);
+
+  // The ping loop reads the latest position through a ref so the interval is not recreated every tick.
   const positionRef = useRef(position);
-  const rideRef = useRef(currentRide);
-  const autoDriveRef = useRef(autoDrive);
   useEffect(() => {
     positionRef.current = position;
-    rideRef.current = currentRide;
-    autoDriveRef.current = autoDrive;
   });
 
+  // Driving itself (towards the pickup and drop-off) is done by the shared trip playback below;
+  // this loop is the phone's regular heartbeat.
   useEffect(() => {
     if (!online) return;
     let cancelled = false;
 
     const tick = async () => {
-      let next = positionRef.current;
-      const ride = rideRef.current;
-      if (autoDriveRef.current && ride) {
-        const target =
-          ride.status === "RIDE_STARTED"
-            ? { lat: ride.dropLatitude, lng: ride.dropLongitude }
-            : { lat: ride.pickupLatitude, lng: ride.pickupLongitude };
-        next = stepTowards(next, target, DRIVE_STEP_KM);
-      }
-
       try {
-        await api.updateDriverLocation(driverId, next);
+        await api.updateDriverLocation(driverId, positionRef.current);
         if (cancelled) return;
-        positionRef.current = next;
-        setPosition(next);
         setLastPing(new Date());
         setPingError(null);
       } catch (error) {
@@ -93,11 +85,7 @@ export function DriverConsole() {
     },
   });
 
-  const refreshAfter = (ride: Ride) => {
-    queryClient.setQueryData(queryKeys.ride(ride.id), ride);
-    void queryClient.invalidateQueries({ queryKey: ["rides"] });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.drivers });
-  };
+  const publishRide = usePublishRide();
 
   const rideAction = useMutation({
     mutationFn: ({ action, rideId }: { action: "arriving" | "start" | "complete" | "cancel"; rideId: string }) => {
@@ -112,7 +100,20 @@ export function DriverConsole() {
           return api.cancelRide(rideId, "Cancelled by driver");
       }
     },
-    onSuccess: refreshAfter,
+    onSuccess: publishRide,
+  });
+
+  const trip = useTripPlayback({
+    role: "driver",
+    driverId,
+    ride: currentRide,
+    basePosition: position,
+    online,
+    autoDrive,
+    onMove: (next) => {
+      positionRef.current = next;
+      setPosition(next);
+    },
   });
 
   const moveTo = (next: LatLng) => {
@@ -208,6 +209,13 @@ export function DriverConsole() {
                 </span>
               )}
             </div>
+            {trip.waitingAt && (
+              <Notice tone="info">
+                {trip.waitingAt === "pickup"
+                  ? `Waiting for ${currentRide.riderId} to start the ride.`
+                  : `Waiting for ${currentRide.riderId} to confirm the drop-off.`}
+              </Notice>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {currentRide.status === "ACCEPTED" && (
                 <Button
@@ -246,6 +254,7 @@ export function DriverConsole() {
           </div>
         )}
         {rideAction.error && <Notice>{rideAction.error.message}</Notice>}
+        {trip.error && <Notice>{trip.error}</Notice>}
       </div>
 
       <div className="space-y-2 border-t border-line pt-5">

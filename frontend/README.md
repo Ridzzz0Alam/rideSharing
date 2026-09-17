@@ -6,7 +6,7 @@ Next.js 16 (App Router) + TypeScript frontend for the RideShare .NET services.
 |---|---|---|
 | Ride | `/` | Pick pickup/drop-off on the map, see the fare estimate, request a ride and follow it live |
 | Drive | `/driver` | Driver simulator: goes online, sends its location every 3 s, drives itself to the pickup and drop-off, and starts/completes trips |
-| Fleet | `/fleet` | All drivers in Redis, busy state, add sample drivers or place new ones on the map |
+| Fleet | `/fleet` | All drivers in Redis, busy state, add drivers at random nearby spots or place them on the map (up to 10) |
 
 ## Stack
 
